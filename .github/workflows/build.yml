@@ -1,4 +1,3 @@
-
 name: Build ImmortalWrt 24.10 with PassWall2 (Mi3G v1)
 
 on:
@@ -94,3 +93,4 @@ jobs:
         with:
           name: ImmortalWrt-24.10-Mi3G-v1-PassWall2
           path: firmware/*
+          
