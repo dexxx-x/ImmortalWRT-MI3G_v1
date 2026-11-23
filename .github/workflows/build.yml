@@ -1,1 +1,96 @@
 
+name: Build ImmortalWrt 24.10 with PassWall2 (Mi3G v1)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Space cleanup
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo apt-get update
+          sudo apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 python2.7 unzip zlib1g-dev lib32gcc-s1 libc6-dev-i386 subversion flex uglifyjs git-core gcc-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler g++-multilib antlr3 gperf wget curl swig rsync
+
+      - name: Clone ImmortalWrt 24.10
+        run: |
+          git clone -b openwrt-24.10 --single-branch https://github.com openwrt
+
+      - name: Add PassWall2 feeds
+        run: |
+          cd openwrt
+          echo "src-git passwall_packages https://github.com" >> feeds.conf.default
+          echo "src-git passwall2 https://github.com" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure Xiaomi Mi Router 3G v1 & PassWall2
+        run: |
+          cd openwrt
+          cat << 'EOF' > .config
+          CONFIG_TARGET_ramips=y
+          CONFIG_TARGET_ramips_mt7621=y
+          CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
+          
+          # Замена dnsmasq на dnsmasq-full
+          # CONFIG_PACKAGE_dnsmasq is not set
+          CONFIG_PACKAGE_dnsmasq-full=y
+          CONFIG_PACKAGE_dnsmasq_full_dhcp=y
+          CONFIG_PACKAGE_dnsmasq_full_dhcpv6=y
+          CONFIG_PACKAGE_dnsmasq_full_dnssec=y
+          CONFIG_PACKAGE_dnsmasq_full_auth=y
+          CONFIG_PACKAGE_dnsmasq_full_ipset=y
+          CONFIG_PACKAGE_dnsmasq_full_nftset=y
+          CONFIG_PACKAGE_dnsmasq_full_conntrack=y
+          CONFIG_PACKAGE_dnsmasq_full_noid=y
+          CONFIG_PACKAGE_dnsmasq_full_tftp=y
+          
+          # Веб-интерфейс LuCI и русский язык
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-ssl=y
+          CONFIG_PACKAGE_luci-i18n-base-ru=y
+          
+          # PassWall2 и компоненты (только Xray, без Sing-Box)
+          CONFIG_PACKAGE_luci-app-passwall2=y
+          CONFIG_PACKAGE_luci-i18n-passwall2-ru=y
+          CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Xray=y
+          # CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_SingBox is not set
+          # CONFIG_PACKAGE_sing-box is not set
+          
+          # Зависимости и базы геоданных
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_kmod-nft-socket=y
+          CONFIG_PACKAGE_ipset=y
+          CONFIG_PACKAGE_ca-bundle=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_v2ray-geoip=y
+          CONFIG_PACKAGE_v2ray-geosite=y
+          EOF
+          make defconfig
+
+      - name: Download packages
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+
+      - name: Compile firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p firmware
+          find openwrt/bin/targets/ -name "*xiaomi_mi-router-3g*sysupgrade.bin" -exec cp {} firmware/ \;
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-24.10-Mi3G-v1-PassWall2
+          path: firmware/*
