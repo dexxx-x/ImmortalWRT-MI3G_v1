@@ -19,15 +19,18 @@ jobs:
 
       - name: Clone ImmortalWrt 24.10
         run: |
-          git clone -b openwrt-24.10 --single-branch https://github.com openwrt
+          GH="https://github.com"
+          git clone -b openwrt-24.10 --single-branch "${GH}/immortalwrt/immortalwrt.git" openwrt
 
       - name: Add PassWall2 feeds
         run: |
           cd openwrt
-          echo "src-git passwall_packages https://github.com" >> feeds.conf.default
-          echo "src-git passwall2 https://github.com" >> feeds.conf.default
+          GH="https://github.com"
+          echo "src-git passwall_packages ${GH}/Openwrt-Passwall/openwrt-passwall-packages.git;main" >> feeds.conf.default
+          echo "src-git passwall2 ${GH}/Openwrt-Passwall/openwrt-passwall2.git;main" >> feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
 
       - name: Configure Xiaomi Mi Router 3G v1 & PassWall2
         run: |
