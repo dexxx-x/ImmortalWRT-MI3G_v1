@@ -1,4 +1,4 @@
-name: Build ImmortalWrt Mi3G with PassWall 2 (Xray only)
+name: Build ImmortalWrt Mi3G with PassWall2 (Xray only)
 
 on:
   workflow_dispatch:
@@ -35,12 +35,13 @@ jobs:
       - name: Clone source code
         run: |
           git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-          ln -sf $(pwd)/openwrt $HOME/openwrt
 
-      - name: Add PassWall 2 feeds
+      - name: Add PassWall2 feeds
         run: |
           cd openwrt
+          # Общий фид зависимостей (xray-core, geoview, chinadns-ng и т.д.)
           echo "src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main" >> feeds.conf.default
+          # Именно PassWall2 (не PassWall1)
           echo "src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main" >> feeds.conf.default
 
       - name: Update and install feeds
@@ -54,7 +55,6 @@ jobs:
           mkdir -p openwrt/files/etc/uci-defaults
           cat << 'EOF' > openwrt/files/etc/uci-defaults/99-custom-wifi
           #!/bin/sh
-          # Автоматическое включение Wi-Fi (2.4GHz и 5GHz) без пароля при первом запуске
           uci set wireless.radio0.disabled=0
           uci set wireless.radio1.disabled=0
           uci set wireless.default_radio0.encryption='none'
@@ -71,24 +71,30 @@ jobs:
           CONFIG_TARGET_ramips=y
           CONFIG_TARGET_ramips_mt7621=y
           CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
-          
-          # Веб-интерфейс LuCI и SSL (используем mbedtls по умолчанию во избежание конфликтов)
+          CONFIG_TARGET_ROOTFS_PARTSIZE=512
+
+          # LuCI
           CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_luci-ssl=y
-          CONFIG_PACKAGE_libustream-mbedtls=y
-          # Принудительно отключаем конфликтующий openssl-бэкенд, если он подтягивается автоматом
-          # CONFIG_PACKAGE_libustream-openssl is not set
-          
-          # PassWall 2 и ядро Xray
+          CONFIG_PACKAGE_uhttpd=y
+
+          # Замена dnsmasq на dnsmasq-full (обязательно для PassWall2)
+          CONFIG_PACKAGE_dnsmasq=n
+          CONFIG_PACKAGE_dnsmasq-full=y
+
+          # PassWall2 — только Xray, sing-box исключён
           CONFIG_PACKAGE_luci-app-passwall2=y
+          CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_SingBox=n
+          CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Xray=y
+          CONFIG_PACKAGE_sing-box=n
           CONFIG_PACKAGE_xray-core=y
+
+          # Зависимости PassWall2
           CONFIG_PACKAGE_chinadns-ng=y
-          CONFIG_PACKAGE_dns2socks=y
           CONFIG_PACKAGE_geoview=y
           CONFIG_PACKAGE_v2ray-geoip=y
           CONFIG_PACKAGE_v2ray-geosite=y
-          
-          # Системные утилиты
+
+          # Полезные утилиты
           CONFIG_PACKAGE_openssh-sftp-server=y
           CONFIG_PACKAGE_curl=y
           CONFIG_PACKAGE_nano=y
@@ -121,4 +127,3 @@ jobs:
           name: ImmortalWrt-Xiaomi-Mi3G-PassWall2-Xray
           path: ${{ env.FIRMWARE_DIR }}/*
           retention-days: 30
-          
