@@ -1,38 +1,55 @@
-name: Build ImmortalWrt 24.10 with PassWall2 (Mi3G v1)
+name: Build ImmortalWrt Mi3G with PassWall 2 (Xray)
 
 on:
   workflow_dispatch:
 
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: openwrt-24.10
+
 jobs:
   build:
     runs-on: ubuntu-22.04
+    if: github.event.repository.owner.id == github.event.sender.id
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Space cleanup
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
-          sudo apt-get update
-          sudo apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 python2.7 unzip zlib1g-dev lib32gcc-s1 libc6-dev-i386 subversion flex uglifyjs git-core gcc-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler g++-multilib antlr3 gperf wget curl swig rsync
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools \
+          python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl \
+          unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
 
-      - name: Clone ImmortalWrt 24.10
+      - name: Clone source code
         run: |
-          GH="https://github.com"
-          git clone -b openwrt-24.10 --single-branch "${GH}/immortalwrt/immortalwrt.git" openwrt
+          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf $(pwd)/openwrt $HOME/openwrt
 
-      - name: Add PassWall2 feeds
+      - name: Add PassWall 2 feeds
         run: |
           cd openwrt
-          GH="https://github.com"
-          echo "src-git passwall_packages ${GH}/Openwrt-Passwall/openwrt-passwall-packages.git;main" >> feeds.conf.default
-          echo "src-git passwall2 ${GH}/Openwrt-Passwall/openwrt-passwall2.git;main" >> feeds.conf.default
+          echo "src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main" >> feeds.conf.default
+          echo "src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main" >> feeds.conf.default
+
+      - name: Update and install feeds
+        run: |
+          cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-
-      - name: Configure Xiaomi Mi Router 3G v1 & PassWall2
+      - name: Generate .config for Xiaomi Mi Router 3G v1
         run: |
           cd openwrt
           cat << 'EOF' > .config
@@ -40,60 +57,50 @@ jobs:
           CONFIG_TARGET_ramips_mt7621=y
           CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
           
-          # Замена dnsmasq на dnsmasq-full
-          # CONFIG_PACKAGE_dnsmasq is not set
-          CONFIG_PACKAGE_dnsmasq-full=y
-          CONFIG_PACKAGE_dnsmasq_full_dhcp=y
-          CONFIG_PACKAGE_dnsmasq_full_dhcpv6=y
-          CONFIG_PACKAGE_dnsmasq_full_dnssec=y
-          CONFIG_PACKAGE_dnsmasq_full_auth=y
-          CONFIG_PACKAGE_dnsmasq_full_ipset=y
-          CONFIG_PACKAGE_dnsmasq_full_nftset=y
-          CONFIG_PACKAGE_dnsmasq_full_conntrack=y
-          CONFIG_PACKAGE_dnsmasq_full_noid=y
-          CONFIG_PACKAGE_dnsmasq_full_tftp=y
-          
-          # Веб-интерфейс LuCI и русский язык
+          # Веб-интерфейс LuCI (с русским языком и HTTPS)
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-ssl=y
-          CONFIG_PACKAGE_luci-i18n-base-ru=y
+          CONFIG_LUCI_LANG_ru=y
           
-          # PassWall2 и компоненты (только Xray, без Sing-Box)
+          # PassWall 2 + только Xray-core (поддерживает и XHTTP, и Hysteria2)
           CONFIG_PACKAGE_luci-app-passwall2=y
           CONFIG_PACKAGE_luci-i18n-passwall2-ru=y
-          CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Xray=y
-          # CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_SingBox is not set
+          CONFIG_PACKAGE_xray-core=y
           # CONFIG_PACKAGE_sing-box is not set
-          
-          # Зависимости и базы геоданных
-          CONFIG_PACKAGE_kmod-nft-tproxy=y
-          CONFIG_PACKAGE_kmod-nft-socket=y
-          CONFIG_PACKAGE_ipset=y
-          CONFIG_PACKAGE_ca-bundle=y
-          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_chinadns-ng=y
+          CONFIG_PACKAGE_dns2socks=y
+          CONFIG_PACKAGE_geoview=y
           CONFIG_PACKAGE_v2ray-geoip=y
           CONFIG_PACKAGE_v2ray-geosite=y
+          
+          # Полезные системные утилиты
+          CONFIG_PACKAGE_openssh-sftp-server=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_nano=y
+          CONFIG_PACKAGE_ip-full=y
           EOF
           make defconfig
 
-      - name: Download packages
+      - name: Download package sources
         run: |
           cd openwrt
-          make download -j$(nproc)
+          make download -j8
 
       - name: Compile firmware
         run: |
           cd openwrt
           make -j$(nproc) || make -j1 V=s
 
-      - name: Organize artifacts
+      - name: Organize files
+        id: organize
         run: |
           mkdir -p firmware
-          find openwrt/bin/targets/ -name "*xiaomi_mi-router-3g*sysupgrade.bin" -exec cp {} firmware/ \;
+          cp openwrt/bin/targets/ramips/mt7621/*xiaomi_mi-router-3g* firmware/
+          echo "FIRMWARE_DIR=$(pwd)/firmware" >> $GITHUB_ENV
 
-      - name: Upload firmware
+      - name: Upload firmware to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-24.10-Mi3G-v1-PassWall2
-          path: firmware/*
-          
+          name: ImmortalWrt-Xiaomi-Mi3G-PassWall2-Xray
+          path: ${{ env.FIRMWARE_DIR }}/*
+          retention-days: 30
