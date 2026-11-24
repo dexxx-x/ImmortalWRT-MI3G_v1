@@ -72,12 +72,14 @@ jobs:
           CONFIG_TARGET_ramips_mt7621=y
           CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
           
-          # Веб-интерфейс LuCI (чистый английский, без русской локали)
+          # Веб-интерфейс LuCI и SSL (используем mbedtls по умолчанию во избежание конфликтов)
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-ssl=y
-          # (Без CONFIG_LUCI_LANG_ru — останется дефолтный английский)
+          CONFIG_PACKAGE_libustream-mbedtls=y
+          # Принудительно отключаем конфликтующий openssl-бэкенд, если он подтягивается автоматом
+          # CONFIG_PACKAGE_libustream-openssl is not set
           
-          # PassWall 2 только с ядром Xray (sing-box убран)
+          # PassWall 2 и ядро Xray
           CONFIG_PACKAGE_luci-app-passwall2=y
           CONFIG_PACKAGE_xray-core=y
           CONFIG_PACKAGE_chinadns-ng=y
@@ -86,7 +88,7 @@ jobs:
           CONFIG_PACKAGE_v2ray-geoip=y
           CONFIG_PACKAGE_v2ray-geosite=y
           
-          # Полезные системные утилиты
+          # Системные утилиты
           CONFIG_PACKAGE_openssh-sftp-server=y
           CONFIG_PACKAGE_curl=y
           CONFIG_PACKAGE_nano=y
