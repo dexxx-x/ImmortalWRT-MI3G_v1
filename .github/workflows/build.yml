@@ -39,9 +39,7 @@ jobs:
       - name: Add PassWall2 feeds
         run: |
           cd openwrt
-          # Общий фид зависимостей (xray-core, geoview, chinadns-ng и т.д.)
           echo "src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main" >> feeds.conf.default
-          # Именно PassWall2 (не PassWall1)
           echo "src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main" >> feeds.conf.default
 
       - name: Update and install feeds
@@ -50,9 +48,11 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure Wi-Fi open by default (uci-defaults)
+      - name: Add uci-defaults fixes (Wi-Fi + PassWall2 fw4 bug)
         run: |
           mkdir -p openwrt/files/etc/uci-defaults
+
+          # Wi-Fi: включить радио и убрать пароль
           cat << 'EOF' > openwrt/files/etc/uci-defaults/99-custom-wifi
           #!/bin/sh
           uci set wireless.radio0.disabled=0
@@ -64,6 +64,22 @@ jobs:
           EOF
           chmod +x openwrt/files/etc/uci-defaults/99-custom-wifi
 
+          # PassWall2: убрать legacy reload из firewall (fw4 bug) и отключить IPSet
+          cat << 'EOF' > openwrt/files/etc/uci-defaults/99-fix-passwall-fw4
+          #!/bin/sh
+          # Удаляем неподдерживаемую в fw4 опцию reload из конфига firewall
+          uci delete firewall.passwall2 2>/dev/null
+          uci delete firewall.passwall2_server 2>/dev/null
+          uci commit firewall 2>/dev/null
+
+          # Отключаем запись DNS в IPSet (известная причина медленного DNS на 24.10)
+          uci set passwall2.@global[0].write_ipset_direct='0' 2>/dev/null
+          uci set passwall2.@global[0].write_nftset_direct='1' 2>/dev/null
+          uci commit passwall2 2>/dev/null
+          exit 0
+          EOF
+          chmod +x openwrt/files/etc/uci-defaults/99-fix-passwall-fw4
+
       - name: Generate .config for Xiaomi Mi Router 3G v1
         run: |
           cd openwrt
@@ -72,26 +88,6 @@ jobs:
           CONFIG_TARGET_ramips_mt7621=y
           CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
           CONFIG_TARGET_ROOTFS_PARTSIZE=512
-
-          # Исправление 1: Удаление проблемного параметра reload из конфига firewall (для fw4)
-          # Это предотвратит ошибку применения правил PassWall2
-          if [ -f openwrt/package/network/config/firewall/files/firewall.config ]; then
-          sed -i "/config redirect/,/option reload '1'/d" openwrt/package/network/config/firewall/files/firewall.config 2>/dev/null || true
-          fi
-          # Более надёжный способ: искать и удалять строки с reload в контексте passwall
-          find openwrt/package -type f -name "*.config" -exec sed -i "/option reload '1'/d" {} \; 2>/dev/null || true
-
-          # Исправление 2: Принудительное отключение записи в ipset для DNS (известная причина медленного DNS)
-          # Это делается через uci-defaults, чтобы применилось при первой загрузке
-          mkdir -p openwrt/files/etc/uci-defaults
-          cat << 'EOF' > openwrt/files/etc/uci-defaults/99-fix-passwall-dns
-          #!/bin/sh
-          # Отключаем медленную запись DNS в ipset для PassWall2
-          uci set passwall2.@global[0].dns_ipset='0' 2>/dev/null || true
-          uci commit passwall2
-          exit 0
-          EOF
-          chmod +x openwrt/files/etc/uci-defaults/99-fix-passwall-dns
 
           # LuCI
           CONFIG_PACKAGE_luci=y
@@ -107,6 +103,11 @@ jobs:
           CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Xray=y
           CONFIG_PACKAGE_sing-box=n
           CONFIG_PACKAGE_xray-core=y
+
+          # Модули ядра для nftables/TPROXY (обязательны для fw4)
+          CONFIG_PACKAGE_kmod-nft-socket=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_kmod-nft-nat=y
 
           # Зависимости PassWall2
           CONFIG_PACKAGE_chinadns-ng=y
