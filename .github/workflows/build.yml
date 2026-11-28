@@ -73,6 +73,26 @@ jobs:
           CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y
           CONFIG_TARGET_ROOTFS_PARTSIZE=512
 
+          # Исправление 1: Удаление проблемного параметра reload из конфига firewall (для fw4)
+          # Это предотвратит ошибку применения правил PassWall2
+          if [ -f openwrt/package/network/config/firewall/files/firewall.config ]; then
+          sed -i "/config redirect/,/option reload '1'/d" openwrt/package/network/config/firewall/files/firewall.config 2>/dev/null || true
+          fi
+          # Более надёжный способ: искать и удалять строки с reload в контексте passwall
+          find openwrt/package -type f -name "*.config" -exec sed -i "/option reload '1'/d" {} \; 2>/dev/null || true
+
+          # Исправление 2: Принудительное отключение записи в ipset для DNS (известная причина медленного DNS)
+          # Это делается через uci-defaults, чтобы применилось при первой загрузке
+          mkdir -p openwrt/files/etc/uci-defaults
+          cat << 'EOF' > openwrt/files/etc/uci-defaults/99-fix-passwall-dns
+          #!/bin/sh
+          # Отключаем медленную запись DNS в ipset для PassWall2
+          uci set passwall2.@global[0].dns_ipset='0' 2>/dev/null || true
+          uci commit passwall2
+          exit 0
+          EOF
+          chmod +x openwrt/files/etc/uci-defaults/99-fix-passwall-dns
+
           # LuCI
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_uhttpd=y
